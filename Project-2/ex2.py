@@ -73,8 +73,8 @@ class Space3DCell():
 class Space3DGrid():
     def __init__(self, grid_size):
         self.grid_size = grid_size
-        self.space_cube_3d = [[[Space3DCell((i, j, k)) for k in range(grid_size)] for j in range(grid_size)] for i in
-                              range(grid_size)]
+        self.grid = [[[Space3DCell((i, j, k)) for k in range(grid_size)] for j in range(grid_size)] for i in
+                     range(grid_size)]
         self.initialize_const_values()
 
         self.active_targets = set()
@@ -117,15 +117,77 @@ class Space3DGrid():
         self.space_cube_3d[x][y][z].set_data(self.ship_value)
 
 
-class ActionVerification():
+class GridManager:
+    # Keeps track of laser lines.
+    # If tile (1,2,3) is safe, it means that no lasers at whole lines x=1, y=2, z=3
     def __init__(self, grid_size):
-        self.observations_set = set()
-        self.grid_size = grid_size
+        self.grid_obj = Space3DGrid(grid_size)
+        self.safe_dict = {'x': set(), 'y': set(), 'z': set()}
+        self.fire_dict = {'x': set(), 'y': set(), 'z': set()}
 
-    def split_grid_subsets(self):
+    def add_zero_observation_coordinate_data(self, coordinates):
+        self.add_coordinate_data(True, coordinates)
+        x, y, z = coordinates
 
-    def verify_action(self, current_action):
-        pass
+        px = x - 1
+        nx = x + 1
+        if px not in self.safe_dict['x']:
+            self.add_safe_x(px)
+        if nx not in self.safe_dict['x']:
+            self.add_safe_x(nx)
+
+        py = y - 1
+        ny = y + 1
+        if py not in self.safe_dict['y']:
+            self.add_safe_y(py)
+        if ny not in self.safe_dict['y']:
+            self.add_safe_y(ny)
+
+        pz = z - 1
+        nz = z + 1
+        if pz not in self.safe_dict['z']:
+            self.add_safe_z(pz)
+        if nz not in self.safe_dict['z']:
+            self.add_safe_z(nz)
+
+    def add_coordinate_data(self, status, coordinates):
+        x, y, z = coordinates
+        if status:
+            if x not in self.safe_dict['x']:
+                self.add_safe_x(x)
+            if y not in self.safe_dict['y']:
+                self.add_safe_y(y)
+            if z not in self.safe_dict['z']:
+                self.add_safe_z(z)
+        else:
+            if x not in self.fire_dict['x']:
+                self.add_fire_x(x)
+            if y not in self.fire_dict['y']:
+                self.add_fire_y(y)
+            if z not in self.fire_dict['z']:
+                self.add_fire_z(z)
+
+    # --------------------------------- #
+
+    def add_safe_x(self, x_value):
+        self.safe_dict['x'].add(x_value)
+
+    def add_safe_y(self, y_value):
+        self.safe_dict['y'].add(y_value)
+
+    def add_safe_z(self, z_value):
+        self.safe_dict['z'].add(z_value)
+
+    # --------------------------------- #
+
+    def add_fire_x(self, x_value):
+        self.fire_dict['x'].add(x_value)
+
+    def add_fire_y(self, y_value):
+        self.fire_dict['y'].add(y_value)
+
+    def add_fire_z(self, z_value):
+        self.fire_dict['z'].add(z_value)
 
 
 class SpaceshipController:
@@ -134,11 +196,13 @@ class SpaceshipController:
     def __init__(self, problem, num_of_transmitters):
         self.state = self.unpack_problem(problem)
         self.state.set_number_of_transmitters(num_of_transmitters)
-        self.my_grid = []
+        self.my_grid = None
         search.Problem.__init__(self, initial=self.state)
 
     def unpack_problem(self, initial):
         grid_size = initial[0]  # Integer
+        self.my_grid = GridManager(grid_size)
+
         spaceships_names = initial[1]  # Tuple of Strings
         devices = initial[2]  # Tuple of Strings
         ships_devices = initial[3]  # Dictionary of Tuples

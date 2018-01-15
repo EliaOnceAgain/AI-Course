@@ -160,6 +160,15 @@ class UtilsActions():
         return grid_legalization_part_1 and grid_legalization_part_2
 
     @staticmethod
+    def check_coordinate_within_grid_range(current_coordinate, grid_size):
+        if print_all_headlines:
+            print(">>> Function: check_within_grid_range")
+        value = current_coordinate
+        grid_legalization_part_1 = value < grid_size
+        grid_legalization_part_2 = value >= 0
+        return grid_legalization_part_1 and grid_legalization_part_2
+
+    @staticmethod
     def check_empty_cell(current_coordinates, state):
         if print_all_headlines:
             print(">>> Function: check_empty_cell")
