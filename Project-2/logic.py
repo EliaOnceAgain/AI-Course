@@ -86,6 +86,9 @@ class PropKB(KB):
 
     def tell(self, sentence):
         """Add the sentence's clauses to the KB."""
+        print(type(sentence))
+        print(sentence)
+        print()
         self.clauses.extend(conjuncts(to_cnf(sentence)))
 
     def ask_generator(self, query):

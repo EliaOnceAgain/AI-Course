@@ -456,6 +456,8 @@ class Overview():
         self.use_device_current_estimate_index = 0
         self.undo_actions_dict = dict()  # [ship_name] : undo_action
 
+        self.grid_manager_first_introduction = True
+
         self.heuristic_value = -1
 
     def calculate_heuristic_value(self):
@@ -533,27 +535,50 @@ class Overview():
                 self.initialize_on_line_device()
                 break
 
-    def get_possible_actions(self):
+    def update_current_observation(self, grid_manager, observation, current_spaceship_name):
+        if self.grid_manager_first_introduction:
+            self.grid_manager_first_introduction = False
+            for current_spaceship in self.spaceships:
+                current_spaceship_coordinates = self.spaceships[current_spaceship].coordinates
+                if current_spaceship not in observation:
+                    grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name, 0)
+                else:
+                    grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name,
+                                                               observation[current_spaceship_name])
+        else:
+            current_spaceship_coordinates = self.spaceships[current_spaceship_name].coordinates
+            if current_spaceship_name not in observation:
+                grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name, 0)
+            else:
+                grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name,
+                                                           observation[current_spaceship_name])
+
+
+
+    def get_possible_actions(self, grid_manager, observation):
         if print_all_headlines:
             print(">>> Function: get_possible_actions")
 
         current_device = self.devices[self.online_device_id]
+        current_device_estimate = self.dictionary_device_spaceships_priorities[current_device][
+            self.calibration_current_estimate_index]
+        current_estimate_spaceship = current_device_estimate[0]
+        current_estimate_spaceship_name = current_estimate_spaceship.name
+
+        self.update_current_observation(grid_manager, observation, current_estimate_spaceship_name)
+
+
         if not self.is_calibrated:
             while True:
-                current_estimate = self.dictionary_device_spaceships_priorities[current_device][
-                    self.calibration_current_estimate_index]
-                current_estimate_spaceship = current_estimate[0]
-                current_estimate_spaceship_name = current_estimate_spaceship.name
-
                 if current_estimate_spaceship_name not in self.undo_actions_dict:
                     if self.is_turned_on:
                         return (('calibrate', current_estimate_spaceship_name, current_device,
                                  self.calibration_targets_dict[current_device]),)
                     else:
-                        if current_estimate[1] == 0:
+                        if current_device_estimate[1] == 0:
                             return (('turn_on', current_estimate_spaceship_name, current_device),)
                         else:
-                            move_actions_set = UtilsActions.get_move_action_priority_calibration(current_estimate,
+                            move_actions_set = UtilsActions.get_move_action_priority_calibration(current_device_estimate,
                                                                                                  self.undo_actions_dict,
                                                                                                  self.state,
                                                                                                  self.grid_size)
@@ -583,11 +608,6 @@ class Overview():
                                 # Notice Me
 
         else:
-            current_device_estimate = self.dictionary_device_spaceships_priorities[current_device][
-                self.calibration_current_estimate_index]
-            current_estimate_spaceship = current_device_estimate[0]
-            current_estimate_spaceship_name = current_estimate_spaceship.name
-
             current_use_estimate = self.dictionary_device_targets_priorities[current_device][
                 self.use_device_current_estimate_index]
             current_use_estimate_target_coordinates = current_use_estimate[0]
