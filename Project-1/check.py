@@ -56,7 +56,7 @@ def solve_problems(problems, goal, comparison_mode = False):
     solved = 0
 
     try:
-        p = ex11.create_spaceship_problem(problems, goal)
+        p = ex1.create_spaceship_problem(problems, goal)
 
     except Exception as e:
         print("Error creating problem: ", e)
@@ -95,7 +95,7 @@ def main():
     # problem_id_to_run = list(range(7))
     # problem_id_to_run = list(range(9, ProblemsCount()))
     # problem_id_to_run = [-1]
-    problem_id_to_run = list(range(ProblemsCount()))
+    problem_id_to_run = [0]
     goal = None
 
     run_costums = 0

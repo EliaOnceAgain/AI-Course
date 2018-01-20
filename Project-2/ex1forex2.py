@@ -456,28 +456,10 @@ class Overview():
         self.use_device_current_estimate_index = 0
         self.undo_actions_dict = dict()  # [ship_name] : undo_action
 
+        self.current_deadends_dict = dict()  # [ship_name] : current_deadend_coordinates
+
         self.grid_manager_first_introduction = True
 
-        self.heuristic_value = -1
-
-    def calculate_heuristic_value(self):
-        if self.goal_test():
-            return 0
-
-        len_dictionary_device_spaceships_priorities = len(self.dictionary_device_spaceships_priorities)
-
-        difference_calibration = len(self.devices) - len_dictionary_device_spaceships_priorities
-        difference_target = self.total_number_of_hits - len(self.state.targets_hit)
-
-        if difference_calibration == len(self.devices):
-            self.heuristic_value = 99999999999
-            return self.heuristic_value
-
-        self.heuristic_value = int(
-            str(difference_target) + str(difference_calibration) + str(self.use_device_current_estimate_index) + str(
-                self.calibration_current_estimate_index))
-
-        return self.heuristic_value
 
     def set_spaceship_cells(self, ship_names, ship_initial_coordinates, ship_devices):
         for current_spaceship_name in ship_names:
@@ -554,6 +536,9 @@ class Overview():
                                                            observation[current_spaceship_name])
 
 
+    def get_possible_explore_actions(self, grid_manager):
+        for current_cell in grid_manager.get_safe_unexplored_cells_filo():
+
 
     def get_possible_actions(self, grid_manager, observation):
         if print_all_headlines:
@@ -566,7 +551,6 @@ class Overview():
         current_estimate_spaceship_name = current_estimate_spaceship.name
 
         self.update_current_observation(grid_manager, observation, current_estimate_spaceship_name)
-
 
         if not self.is_calibrated:
             while True:

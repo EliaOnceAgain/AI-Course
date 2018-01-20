@@ -34,6 +34,7 @@ if __name__ == '__main__':
     else:
         wumpus_kb.tell(~P11)
         telling_ = str(B11 | '<=>' | ((P12 | P21)))
+        telling_ = logic.expr(telling_)
         wumpus_kb.tell(telling_)
         #wumpus_kb.tell(B11 | '<=>' | ((P12 | P21)))
 

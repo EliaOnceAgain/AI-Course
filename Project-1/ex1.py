@@ -59,7 +59,6 @@ class UtilsActions():
         if print_all_headlines:
             print(">>> Function: good_cop_bad_cop")
 
-
         temp_move_actions_set = set()
         for dist, dirc in distances_directions:
             new_coordinates = UtilsActions.new_coordinates_by_direction(current_coordinates, dirc)
