@@ -86,9 +86,6 @@ class PropKB(KB):
 
     def tell(self, sentence):
         """Add the sentence's clauses to the KB."""
-        print(type(sentence))
-        print(sentence)
-        print()
         self.clauses.extend(conjuncts(to_cnf(sentence)))
 
     def ask_generator(self, query):
@@ -334,6 +331,10 @@ def to_cnf(s):
 def eliminate_implications(s):
     """Change implications into equivalent form with only &, |, and ~ as logical operators."""
     s = expr(s)
+    # print("------------------")
+    # print(s)
+    # print(type(s))
+    # print("------------------")
     if not s.args or is_symbol(s.op):
         return s  # Atoms are unchanged.
     args = list(map(eliminate_implications, s.args))

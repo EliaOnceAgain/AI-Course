@@ -36,10 +36,13 @@ if __name__ == '__main__':
         telling_ = str(B11 | '<=>' | ((P12 | P21)))
         telling_ = logic.expr(telling_)
         wumpus_kb.tell(telling_)
+        print(wa)
         #wumpus_kb.tell(B11 | '<=>' | ((P12 | P21)))
 
         wumpus_kb.tell(B21 | '<=>' | ((P11 | P22 | P31)))
-        wumpus_kb.tell(~B11)
+        sentence = "~B11"
+        print("Sentence: ", sentence)
+        wumpus_kb.tell(sentence)
         wumpus_kb.tell(B21)
 
     datetime_result = datetime.now()

@@ -24,6 +24,7 @@ def get_num_of_transmitters(Lazer_transm_tuple):
 def check_solution(problem, lazer_locations):
     controller = ex2.SpaceshipController(problem, get_num_of_transmitters(lazer_locations))
 
+
     hostname = socket.gethostname()
     # print("hostname", hostname)
     ipaddress = socket.gethostbyname(socket.gethostname())
@@ -40,10 +41,10 @@ def check_solution(problem, lazer_locations):
     done = False
 
     def ex2_get_next_action(observation):
-        print("got observation", observation)
+        print("Received Observation: ", observation)
         try:
             action = controller.get_next_action(observation)
-            print("returning action", action)
+            print("Returned Action: ", action)
             return action
         except:
             traceback.print_exc()

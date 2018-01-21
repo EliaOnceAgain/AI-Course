@@ -1,4 +1,5 @@
-import ex2_checker_client as ex2_checker
+# import ex2_checker_client as ex2_checker
+import ex2_checker_local as ex2_checker
 
 
 def get_num_of_transmitters(Lazer_transm_tuple):
@@ -22,22 +23,22 @@ def test_checker():
         {"wookie": (0, 0, 0)}
     )
     # get the actual lazer locations represented by a 3 element tuple holding the 'x-y', 'x-z' and 'y-z' signals respectively
-    lazer_locations = ((), (), ())
+    lazer_locations = ((), (), ())  # 0
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
-    lazer_locations = (((1, 0),), ((0, 1),), ((0, 1),))
+    lazer_locations = (((1, 0),), ((0, 1),), ((0, 1),))  # 1
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
-    lazer_locations = (((1, 0),), (), ())
+    lazer_locations = (((1, 0),), (), ())  # 2
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
-    lazer_locations = (((2, 1),), (), ())
+    lazer_locations = (((2, 1),), (), ())  # 3
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
-    lazer_locations = (((1, 0),), ((1, 0),), ((1, 0),))
+    lazer_locations = (((1, 0),), ((1, 0),), ((1, 0),))  # 4
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
-    lazer_locations = (((0, 1),), ((0, 1),), ((0, 1),))
+    lazer_locations = (((0, 1),), ((0, 1),), ((0, 1),))  # 5
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
     problem = (5,
@@ -52,24 +53,51 @@ def test_checker():
                )
 
     # get the actual lazer locations represented by a 3 element tuple holding the 'x-y', 'x-z' and 'y-z' signals respectively
-    lazer_locations = ((), (), ())
+    lazer_locations = ((), (), ())  # 6
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
-    lazer_locations = (((1, 0),), ((0, 1),), ((0, 1), (2, 2), (3, 1)))
+    lazer_locations = (((1, 0),), ((0, 1),), ((0, 1), (2, 2), (3, 1)))  # 7
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
-    lazer_locations = (((1, 0), (4, 0)), ((4, 0)), ((3, 1)))
+    lazer_locations = (((1, 0), (4, 0)), ((4, 0),), ((3, 1),))  # 8
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
-    for problem, lazer_locations, num_of_transmitters in problems:
-        print('-----------------------------------------------------------')
-        print('testing problem:')
-        print(problem)
-        print('lazer locations:')
-        print(lazer_locations)
-        print('-----------------')
+    number_of_runs = 1
+    number_of_test_runs = 1
+    result = None
+    number_of_success = 0
 
-        ex2_checker.check_solution(problem, lazer_locations)
+    for i, p in enumerate(problems[6:7]):
+        problem, lazer_locations, num_of_transmitters = p
+        print("Problem ID: ", i)
+        #print('####################################################')
+        #print('Testing Problem:', problem)
+        #print('Lazer Locations:', lazer_locations)
+        #print()
+
+        win_ratio_all = 0
+        for _ in range(number_of_test_runs):
+
+            number_of_success = 0
+            for _ in range(number_of_runs):
+                result = ex2_checker.check_solution(problem, lazer_locations, print_single_results=False)
+                #print()
+                if result:
+                    number_of_success += 1
+
+            if number_of_test_runs == 1:
+                print("Win Ratio: ", float(number_of_success) / float(number_of_runs))
+            #print("Number of Successfull runs: ", number_of_success)
+            #print("Number of Failed runs: ", number_of_runs - number_of_success)
+            win_ratio_all += number_of_success / number_of_runs
+
+
+        if number_of_test_runs > 1:
+            print("Total Win Ratio: ", float(win_ratio_all) / float(number_of_test_runs))
+        print()
+
+
+        #print('####################################################\n')
 
 
 if __name__ == '__main__':

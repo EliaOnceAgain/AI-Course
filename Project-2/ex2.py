@@ -2,14 +2,14 @@ __author__ = 'sarah'
 
 ids = ["204657977"]
 
+import random
 import logic
 import search
-import itertools
 import functools
 from copy import deepcopy
 
 print_all_headlines = False
-print_main_headlines = True
+print_main_headlines = False
 
 
 # ----------------------------------------------------------------------------------------------- #
@@ -67,8 +67,11 @@ class Problem(object):
 
 
 class SmallProblemManager(Problem):
-    def __init__(self, starting_coordinates, destination_coordinates, grid_manager, spaceship_dictionary):
-        self.state = SmallProblem(starting_coordinates, destination_coordinates, grid_manager, spaceship_dictionary)
+    def __init__(self, starting_coordinates, destination_coordinates, grid_manager, spaceship_dictionary, active_ship,
+                 occupied_coordinates, spaceships_occupied_identifiers):
+        self.state = SmallProblem(starting_coordinates, destination_coordinates, grid_manager, spaceship_dictionary,
+                                  active_ship, occupied_coordinates, spaceships_occupied_identifiers)
+        self.initialize = self.state
         Problem.__init__(self, initial=self.state)
 
     def actions(self, state):
@@ -96,7 +99,8 @@ class SmallProblemManager(Problem):
 
 
 class SmallProblem:
-    def __init__(self, starting_coordinates, destination_coordinates, grid_manager, spaceship_dictionary, active_ship):
+    def __init__(self, starting_coordinates, destination_coordinates, grid_manager, spaceship_dictionary, active_ship,
+                 occupied_coordinates, spaceships_occupied_identifiers):
         self.starting_coordinates = starting_coordinates
         self.destination_coordinates = destination_coordinates
         self.current_coordinates = starting_coordinates
@@ -105,8 +109,8 @@ class SmallProblem:
         self.grid_manager = grid_manager
 
         self.active_ship = active_ship
-        self.occupied_coordinates = set()
-        self.spaceships_occupied_identifiers = set()
+        self.occupied_coordinates = occupied_coordinates
+        self.spaceships_occupied_identifiers = spaceships_occupied_identifiers
         self.spaceships_dictionary = spaceship_dictionary
 
     def add_target_occupied_coordinate(self, occupied_coordinate):
@@ -120,7 +124,7 @@ class SmallProblem:
         self.occupied_coordinates.remove(occupied_coordinate)
         self.spaceships_occupied_identifiers.remove(occupied_identifier)
 
-    def get_action(self):
+    def get_possible_actions(self):
         distances, directions = UtilsGeneral.get_from_to_dist_dirc(self.current_coordinates,
                                                                    self.destination_coordinates)
         distances_directions = sorted(zip(distances, directions), key=lambda dist: dist[0])
@@ -130,20 +134,26 @@ class SmallProblem:
             new_coordinates = UtilsActions.new_coordinates_by_direction(self.current_coordinates, dirc)
             new_coordinates, _ = UtilsActions.coordinates_legalization(new_coordinates, self, self.grid_size,
                                                                        priority=False)
-            if not self.grid_manager.check_action_destination_safety(new_coordinates):
-                new_coordinates = None
+            if new_coordinates:
+                if not self.grid_manager.check_action_destination_safety(new_coordinates):
+                    new_coordinates = None
 
-            other_new_coordinates, other_spaceship_name = UtilsActions.coordinates_legalization(new_coordinates, self,
-                                                                                                self.grid_size,
-                                                                                                not_in_direction=dirc,
-                                                                                                priority=True)
-            if not self.grid_manager.check_action_destination_safety(other_new_coordinates):
-                other_new_coordinates = None
+            if not new_coordinates:
+                other_new_coordinates, other_spaceship_name = UtilsActions.coordinates_legalization(
+                    self.current_coordinates, self,
+                    self.grid_size,
+                    not_in_direction=dirc,
+                    priority=True)
+                if other_spaceship_name:
+                    if not self.grid_manager.check_action_destination_safety(other_new_coordinates):
+                        other_new_coordinates = None
 
             if new_coordinates:
                 move_actions_set.add(("move", self.active_ship, self.current_coordinates, new_coordinates))
-            if other_new_coordinates and other_spaceship_name:
-                move_actions_set.add(("move", other_spaceship_name, new_coordinates, other_new_coordinates))
+
+            if not new_coordinates:
+                if other_new_coordinates and other_spaceship_name:
+                    move_actions_set.add(("move", other_spaceship_name, new_coordinates, other_new_coordinates))
 
         return move_actions_set
 
@@ -158,9 +168,9 @@ class SmallProblem:
         return False
 
     def current_heuristic(self):
-        return sum(abs(self.current_coordinates[0] - self.destination_coordinates[0]) +
-                   abs(self.current_coordinates[1] - self.destination_coordinates[1]) +
-                   abs(self.current_coordinates[2] - self.destination_coordinates[2]))
+        return abs(self.current_coordinates[0] - self.destination_coordinates[0]) + \
+               abs(self.current_coordinates[1] - self.destination_coordinates[1]) + \
+               abs(self.current_coordinates[2] - self.destination_coordinates[2])
 
     def __hash__(self):
         return hash((frozenset(self.occupied_coordinates), frozenset(self.spaceships_occupied_identifiers)))
@@ -169,6 +179,8 @@ class SmallProblem:
         return self.occupied_coordinates == other.occupied_coordinates \
                and self.spaceships_occupied_identifiers == other.spaceships_occupied_identifiers
 
+    def __lt__(self, node):
+        return self.current_heuristic() < node.current_heuristic()
 
 def insort_right(a, x, lo=0, hi=None):
     """Insert item x in list a, and keep it sorted assuming a is sorted.
@@ -370,12 +382,14 @@ def best_first_graph_search(problem, f):
 
     return None
 
+
 def astar_search(problem, h=None):
     """A* search is best-first graph search with f(n) = g(n)+h(n).
     You need to specify the h function when you call astar_search, or
     else in your Problem subclass."""
     h = memoize(h or problem.h, 'h')
     return best_first_graph_search(problem, lambda n: n.path_cost + h(n))
+
 
 # ----------------------------------------------------------------------------------------------- #
 
@@ -609,7 +623,6 @@ class CalibPriorityManager(PriorityManager):
         for current_device in self.overview_obj.devices:
             if current_device not in self.dead_devices:
                 if get_current_device_data(current_device):
-                    self.reset_introduced_device(current_device)
                     break
 
         self.get_new_active_weapon()
@@ -675,26 +688,30 @@ class CalibPriorityManager(PriorityManager):
         if print_all_headlines or print_main_headlines:
             print(">>> Function: get_calibration_actions")
 
+        single_action = False
+
         current_device = self.overview_obj.devices[self.overview_obj.online_device_id]
 
         current_estimate = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
             self.overview_obj.calibration_current_estimate_index]
 
         if current_estimate[1] == 0:
-            return self.get_calib_estimate_action(current_estimate, current_device, as_single=True)
+            single_action = True
+            yield self.get_calib_estimate_action(current_estimate, current_device, as_single=True)
 
-        for current_estimate_index in range(
-                len(self.overview_obj.dictionary_device_spaceships_priorities[current_device])):
-
-            current_estimate = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
-                current_estimate_index]
-            current_estimate_actions_set = self.get_calib_estimate_action(current_estimate, current_device)
-
-            self.overview_obj.calibration_current_estimate_index = current_estimate_index
-            for current_action in current_estimate_actions_set:
-                yield current_action
-
-            self.add_device_ship_deadend(current_device, current_estimate[0].name)
+        # if not single_action:
+        #     for current_estimate_index in range(
+        #             len(self.overview_obj.dictionary_device_spaceships_priorities[current_device])):
+        #
+        #         current_estimate = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
+        #             current_estimate_index]
+        #         current_estimate_actions_set = self.get_calib_estimate_action(current_estimate, current_device)
+        #
+        #         self.overview_obj.calibration_current_estimate_index = current_estimate_index
+        #         for current_action in current_estimate_actions_set:
+        #             yield current_action
+        #
+        #         self.add_device_ship_deadend(current_device, current_estimate[0].name)
 
 
 class TargetPriorityManager(PriorityManager):
@@ -805,11 +822,6 @@ class TargetPriorityManager(PriorityManager):
         if print_all_headlines or print_main_headlines:
             print(">>> Function: get_target_actions")
 
-        def introduce_device(current_device):
-            if current_device in self.devices_introduced:
-                return False
-            return True
-
         current_device = self.overview_obj.devices[self.overview_obj.online_device_id]
         current_device_calib_estimate = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
             self.overview_obj.calibration_current_estimate_index]
@@ -821,11 +833,14 @@ class TargetPriorityManager(PriorityManager):
 
         current_use_estimate_target_coordinates = current_use_estimate[0]
 
+        single_action = False
+
         if current_use_estimate[1] == 0:
+            single_action = True
             yield ('use', current_estimate_spaceship_name, current_device, current_use_estimate_target_coordinates)
 
-        elif introduce_device(current_device):
-            self.devices_introduced.add(current_device)
+        # -------------------------------
+        if not single_action:
             for current_estimate_index in range(
                     len(self.overview_obj.dictionary_device_targets_priorities[current_device])):
 
@@ -841,25 +856,13 @@ class TargetPriorityManager(PriorityManager):
                 for current_action in current_estimate_actions_set:
                     yield current_action
 
-            # Make sure 'use_device_current_estimate_index' is initialized to zero somewhere in Calib priority
-            self.overview_obj.calib_priority_manager.add_device_ship_deadend(current_device,
-                                                                             current_estimate_spaceship_name)
-            self.overview_obj.calib_priority_manager.priority_calib_main()
-            calibration_actions = self.overview_obj.calib_priority_manager.get_calibration_actions()
-            for current_action in calibration_actions:
-                yield current_action
-
-
-        else:
-            current_estimate = self.overview_obj.dictionary_device_targets_priorities[current_device][
-                self.overview_obj.use_device_current_estimate_index]
-            current_estimate_actions_set = UtilsActions.get_move_action_priority_targets(current_estimate,
-                                                                                         current_estimate_spaceship,
-                                                                                         self.overview_obj.state,
-                                                                                         self.overview_obj.grid_size)
-
-            for current_action in current_estimate_actions_set:
-                yield current_action
+            # # Make sure 'use_device_current_estimate_index' is initialized to zero somewhere in Calib priority
+            # self.overview_obj.calib_priority_manager.add_device_ship_deadend(current_device,
+            #                                                                  current_estimate_spaceship_name)
+            # self.overview_obj.calib_priority_manager.priority_calib_main()
+            # calibration_actions = self.overview_obj.calib_priority_manager.get_calibration_actions()
+            # for current_action in calibration_actions:
+            #     yield current_action
 
 
 class UtilsGeneral:
@@ -1102,6 +1105,8 @@ class UtilsActions:
             print(">>> Function: move_me_anywhere")
 
         movements_set = set()
+        if not isinstance(not_in_direction, list):
+            not_in_direction = [not_in_direction]
         possible_directions = UtilsActions.get_possible_directions(not_in_direction)
 
         for dirc in possible_directions:
@@ -1338,8 +1343,8 @@ class KBManager:
 
     def tell(self, sentence):
         """Add the sentence's clauses to the KB."""
-        print("Function: KB_Manager.tell >> Printing Sentence: ", sentence)
-        self.space_kb.extend(logic.conjuncts(logic.to_cnf(sentence)))
+        # print("Function: KB_Manager.tell >> Printing Sentence: ", sentence)
+        self.space_kb.tell(logic.expr(sentence))
 
     def ask_generator(self, query):
         """Yield the empty substitution {} if KB entails query; else no results."""
@@ -1433,8 +1438,9 @@ class Space3DGrid:
 
 
 class GridManager:
-    def __init__(self, grid_size):
+    def __init__(self, grid_size, state):
         self.grid_obj = Space3DGrid(grid_size)
+        self.state = state
         self.guru = KBManager()
         self.safe_dict = {'x': set(), 'y': set(), 'z': set()}
         self.fire_dict = {'x': set(), 'y': set(), 'z': set()}
@@ -1449,20 +1455,32 @@ class GridManager:
         min_distance = 999
         min_index = 0
         for ind, current_coordinates in enumerate(self.safe_but_unexplored):
-            if self.grid_obj.get_cell(current_coordinates).explored_by_ship(ship_name)
-            dx, dy, dz = abs(target_coordinates[0] - current_coordinates[0]), abs(
-                target_coordinates[1] - current_coordinates[1]), abs(target_coordinates[2] - current_coordinates[2])
+            if UtilsActions.check_empty_cell(current_coordinates, self.state):
+                dx, dy, dz = abs(target_coordinates[0] - current_coordinates[0]), abs(
+                    target_coordinates[1] - current_coordinates[1]), abs(target_coordinates[2] - current_coordinates[2])
 
-            dist = (dx + dy + dz) - max(dx, dy, dz)
-            if dist < min_distance:
-                min_distance = dist
-                min_index = ind
+                dist = (dx + dy + dz) - max(dx, dy, dz)
+                if dist < min_distance:
+                    if ship_name:
+                        if self.grid_obj.get_cell(current_coordinates).explored_by_ship(ship_name):
+                            min_distance = dist
+                            min_index = ind
+                    else:
+                        min_distance = dist
+                        min_index = ind
+
+                        if min_distance == 0:
+                            break
 
         if min_distance < 999:
             return self.safe_but_unexplored[min_index]
         return None
 
-    def get_best_random_move(self, coordinates_list):
+    def get_best_random_move(self, actions_set, go_wild=False):
+
+        if go_wild:
+            return random.choice(actions_set)
+
         def get_rating(current_coordinates):
             x, y, z = current_coordinates
             voting = 0
@@ -1485,16 +1503,25 @@ class GridManager:
             return voting
 
         max_value = -999
-        max_index = 0
+        max_action = []
 
-        for current_index in range(len(coordinates_list)):
-            current_coordinates = coordinates_list[current_index]
+        for current_action in actions_set:
+            current_coordinates = current_action[3]
             current_vote = get_rating(current_coordinates)
+            if max_value == current_vote:
+                max_action.append(current_action)
             if max_value < current_vote:
                 max_value = current_vote
-                max_index = current_index
+                max_action = [current_action]
 
-        return max_index
+        #print("Max Actions: ", max_action)
+        #print("All Actions: ", actions_set)
+        if len(max_action) == 1:
+            return max_action[0]
+        else:
+            random_action = random.choice(max_action)
+            #print(random_action)
+            return random_action
 
     # --------------------------------- #
 
@@ -1540,6 +1567,8 @@ class GridManager:
         ny = (x, y + 1, z)
         pz = (x, y, z - 1)
         nz = (x, y, z + 1)
+
+        center_cell = deepcopy(current_cell)
 
         legal_cells = 0
         safe_cells = []
@@ -1686,7 +1715,7 @@ class GridManager:
                         current_cell.set_safe(self.guru)
             '''
 
-        self.make_neighbors_then_tell_sentence(current_cell)
+        self.make_neighbors_then_tell_sentence(center_cell)
 
     # --------------------------------- #
 
@@ -1707,7 +1736,7 @@ class GridManager:
 
     # --------------------------------- #
 
-    def add_explored_coordinates_data(self, coordinates, current_spaceship_name, observation):
+    def add_explored_coordinates_data(self, coordinates, current_spaceship_name, observation, spaceships_dict=None):
         current_cell = self.grid_obj.get_cell(coordinates)
         current_cell.set_explored(current_spaceship_name)
         if coordinates in self.safe_but_unexplored:
@@ -1717,6 +1746,8 @@ class GridManager:
         if observation == 0:
             self.add_zero_observation_coordinates_data(current_cell, current_spaceship_name)
         elif observation == -1:
+            if current_spaceship_name in spaceships_dict:
+                del spaceships_dict[current_spaceship_name]
             self.add_fire_coordinates_data(current_cell)
         else:
             current_cell.has_indication = True
@@ -1770,18 +1801,20 @@ class GridManager:
     def make_and_tell_sentence(self, current_cell, *rest):
         first_add = True
 
-        sentence = current_cell.cell_indication_expr
-        sentence = sentence + " | '<=>' | (("
+        sentence = str(current_cell.cell_indication_expr)
         for current_cell in rest:
             if current_cell:
                 if first_add:
                     first_add = False
-                    sentence = sentence + current_cell.cell_expr
+                    sentence = sentence + " <=> (("
+                    sentence = sentence + str(current_cell.cell_expr)
+
                 else:
                     sentence = sentence + " | "
-                    sentence = sentence + current_cell.cell_expr
+                    sentence = sentence + str(current_cell.cell_expr)
 
         sentence = sentence + "))"
+
         self.guru.tell(sentence)
 
     # --------------------------------- #
@@ -1868,9 +1901,14 @@ class Overview:
         self.use_device_current_estimate_index = 0
         self.undo_actions_dict = dict()  # [ship_name] : undo_action
 
+
+        self.number_of_transmitters = 0
         self.exploration_mode = 0
-        self.exploration_plan = None  # Will be a dict [ship_name] : action moves
+        self.exploration_plan = dict()  # Will be a dict [ship_name] : action moves
         self.grid_manager_first_introduction = True
+
+    def set_number_of_transmitters(self, number_of_transmitters):
+        self.number_of_transmitters = number_of_transmitters
 
     def set_spaceship_cells(self, ship_names, ship_initial_coordinates, ship_devices):
         for current_spaceship_name in ship_names:
@@ -1908,32 +1946,26 @@ class Overview:
         return True
 
     def update_current_observation(self, grid_manager, observation, current_spaceship_name):
-        if self.grid_manager_first_introduction:
-            self.grid_manager_first_introduction = False
-            for current_spaceship in self.spaceships:
-                current_spaceship_coordinates = self.spaceships[current_spaceship].coordinates
-                if current_spaceship not in observation:
-                    grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name, 0)
-                else:
-                    grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name,
-                                                               observation[current_spaceship_name])
-        else:
-            current_spaceship_coordinates = self.spaceships[current_spaceship_name].coordinates
-            if current_spaceship_name not in observation:
+        #if self.grid_manager_first_introduction:
+            #self.grid_manager_first_introduction = False
+        for current_spaceship in self.spaceships:
+            current_spaceship_coordinates = self.spaceships[current_spaceship].coordinates
+            if current_spaceship not in observation:
                 grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name, 0)
             else:
                 grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name,
-                                                           observation[current_spaceship_name])
+                                                           observation[current_spaceship_name], self.spaceships)
+        # else:
+        #     current_spaceship_coordinates = self.spaceships[current_spaceship_name].coordinates
+        #     if current_spaceship_name not in observation:
+        #         grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name, 0)
+        #     else:
+        #         grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship_name,
+        #                                                    observation[current_spaceship_name], self.spaceships)
 
     def get_possible_actions(self, grid_manager, observation):
         if print_all_headlines or print_main_headlines:
             print(">>> Function: get_possible_actions")
-
-        if self.exploration_plan:
-            for current_ship in self.exploration_plan:
-                current_move_action = self.exploration_plan[current_ship][-1]
-                del self.exploration_plan[current_ship][-1]
-                return current_move_action
 
         current_device = self.devices[self.online_device_id]
         current_device_estimate = self.dictionary_device_spaceships_priorities[current_device][
@@ -1943,8 +1975,35 @@ class Overview:
 
         self.update_current_observation(grid_manager, observation, current_estimate_spaceship_name)
 
+        if not self.spaceships:
+            return None
+
+        if self.exploration_plan:
+            for current_ship in self.exploration_plan:
+                if current_ship in self.spaceships:
+                    if len(self.exploration_plan[current_ship]) == 0:
+                        self.exploration_mode = 0
+                        self.exploration_plan = dict()
+
+                        if self.is_calibrated:
+                            self.target_priority_manager.priority_target_update()
+                        else:
+                            self.calib_priority_manager.priority_calib_update()
+
+                        continue
+
+                    current_move_action = self.exploration_plan[current_ship][0]
+                    del self.exploration_plan[current_ship][0]
+                    return current_move_action
+
+        def one_step_away(p1, p2):
+            x1, y1, z1 = p1
+            x2, y2, z2 = p2
+            return abs(x2 - x1) + abs(y2 - y1) + abs(z2 - z1) == 1
+
         if not self.is_calibrated:
-            all_possible_actions = self.calib_priority_manager.get_calibration_actions()
+            all_possible_actions = self.calib_priority_manager.get_calibration_actions(grid_manager)
+            all_possible_actions = list(all_possible_actions)
             for current_possible_action in all_possible_actions:
                 if current_possible_action[0] == 'move':
                     if grid_manager.check_action_destination_safety(current_possible_action[3], True):
@@ -1955,14 +2014,85 @@ class Overview:
             current_device_calibration_coordinate = self.calibration_targets_dict[current_device]
             cell_to_explore = grid_manager.get_closest_explore_to_cell(current_device_calibration_coordinate)
             if cell_to_explore:
-                p = SmallProblemManager()
+                min_steps = 999
+                min_result = None
+                for current_spaceship_name in self.spaceships:
+                    current_spaceship = self.spaceships[current_spaceship_name]
+                    current_spaceship_coordinates = current_spaceship.coordinates
+                    if one_step_away(cell_to_explore, current_spaceship_coordinates):
+                        return ('move', current_spaceship.name, current_spaceship_coordinates, cell_to_explore)
 
-            # Go on exploration while adding current priority which is defined by ship -> target coordinates to
-            # uncertain priorities set. After exploration done, check all uncertain priorities if changed.
-            # If yes go by one of them, else explore some more
+                for current_spaceship_name in self.spaceships:
+                    current_spaceship = self.spaceships[current_spaceship_name]
+                    current_spaceship_coordinates = current_spaceship.coordinates
+                    p = SmallProblemManager(current_spaceship_coordinates, cell_to_explore, grid_manager,
+                                            self.spaceships, current_spaceship_name, self.state.occupied_coordinates,
+                                            self.state.spaceships_occupied_identifiers)
+                    result = astar_search(p, None)
+                    if isinstance(result, Node):
+                        solution = list(map(lambda n: n.action, result.path()))[1:]
+
+                        if len(solution) < min_steps:
+                            min_steps = len(solution)
+                            min_result = solution
+
+                if min_result:
+                    self.exploration_mode = 1
+                    active_ship = min_result[0][1]
+                    self.exploration_plan[active_ship] = min_result
+
+                    current_move_action = self.exploration_plan[active_ship][0]
+                    del self.exploration_plan[active_ship][0]
+                    return current_move_action
+
+            else:
+                best_bet = grid_manager.get_best_random_move(all_possible_actions)
+                return best_bet
 
         else:
-            return self.target_priority_manager.get_target_actions()
+            all_possible_actions = self.target_priority_manager.get_target_actions()
+            all_possible_actions = list(all_possible_actions)
+            for current_possible_action in all_possible_actions:
+                if current_possible_action[0] == 'move':
+                    if grid_manager.check_action_destination_safety(current_possible_action[3], True):
+                        return current_possible_action
+                else:
+                    return current_possible_action
+
+            current_use_estimate = self.dictionary_device_targets_priorities[current_device][
+                self.use_device_current_estimate_index]
+            current_use_estimate_target_coordinates = current_use_estimate[0]
+
+            cell_to_explore = grid_manager.get_closest_explore_to_cell(current_use_estimate_target_coordinates)
+            if cell_to_explore:
+                min_steps = 999
+                min_result = None
+                for current_spaceship_name in self.spaceships:
+                    current_spaceship = self.spaceships[current_spaceship_name]
+                    current_spaceship_coordinates = current_spaceship.coordinates
+                    p = SmallProblemManager(current_spaceship_coordinates, cell_to_explore, grid_manager,
+                                            self.spaceships, current_spaceship_name, self.state.occupied_coordinates,
+                                            self.state.spaceships_occupied_identifiers)
+                    result = astar_search(p, None)
+                    if isinstance(result, Node):
+                        solution = list(map(lambda n: n.action, result.path()))[1:]
+
+                        if len(solution) < min_steps:
+                            min_steps = len(solution)
+                            min_result = solution
+
+                if min_result:
+                    self.exploration_mode = 1
+                    active_ship = min_result[0][1]
+                    self.exploration_plan[active_ship] = min_result
+
+                    current_move_action = self.exploration_plan[active_ship][-1]
+                    del self.exploration_plan[active_ship][-1]
+                    return current_move_action
+
+            else:
+                best_bet = grid_manager.get_best_random_move(all_possible_actions)
+                return best_bet
 
     def check_active_devices(self):
         if print_all_headlines:
@@ -2020,15 +2150,15 @@ class SpaceshipController:
     "This class is a controller for a spaceship problem."
 
     def __init__(self, problem, num_of_transmitters):
-        self.state = self.unpack_problem(problem)
+        self.state = self.unpack_problem(deepcopy(problem))
         self.state.set_number_of_transmitters(num_of_transmitters)
-        self.grid_manager = None
-        self.first_observation_initialization = True
+        self.grid_size = 0
+        self.unpack_problem(problem)
+        self.grid_manager = GridManager(self.grid_size, self.state.state)
         search.Problem.__init__(self, initial=self.state)
 
     def unpack_problem(self, initial):
-        grid_size = initial[0]  # Integer
-        self.grid_manager = GridManager(grid_size)
+        self.grid_size = initial[0]  # Integer
 
         spaceships_names = initial[1]  # Tuple of Strings
         devices = initial[2]  # Tuple of Strings
@@ -2037,12 +2167,11 @@ class SpaceshipController:
         targets = initial[5]  # Dictionary of Tuples
         initial_positions = initial[6]  # Dictionary of Tuples
 
-        state = Overview(grid_size)
+        state = Overview(self.grid_size)
         state.set_spaceship_cells(spaceships_names, initial_positions, ships_devices)
         state.set_calibration_targets_cells(calibration_targets)
         state.set_devices(devices)
         state.set_targets_cells(targets)
-        state.calculate_heuristic_value()
         state.check_active_devices()
 
         return state
@@ -2050,10 +2179,10 @@ class SpaceshipController:
     def get_next_action(self, observation):
         # ship observation -1 means ship was destroyed
         # ship observation other than -1 (it will be int>0) means number of lasers detected around ship
-        print(observation)
-        all_possible_actions = self.state.get_possible_actions(self.grid_manager, observation)
-        for current_possible_action in all_possible_actions:
-            yield current_possible_action
+        # print("Received Observation: ", observation)
+        best_action = self.state.get_possible_actions(self.grid_manager, observation)
+        # print("Returned Action: ", best_action)
+        return best_action
 
     def result(self, action):
         self.state.update_action(action)
