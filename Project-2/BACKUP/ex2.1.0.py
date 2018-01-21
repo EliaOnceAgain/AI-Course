@@ -153,8 +153,7 @@ class SmallProblem:
 
             if not new_coordinates:
                 if other_new_coordinates and other_spaceship_name:
-                    move_actions_set.add(
-                        ("move", other_spaceship_name, self.current_coordinates, other_new_coordinates))
+                    move_actions_set.add(("move", other_spaceship_name, new_coordinates, other_new_coordinates))
 
         return move_actions_set
 
@@ -187,12 +186,16 @@ class SmallProblem:
 class BigProblemManager(Problem):
     def __init__(self, starting_coordinates, destination_coordinates, grid_manager, spaceship_dictionary, active_ship,
                  occupied_coordinates, spaceships_occupied_identifiers):
-        self.state = BigProblem(starting_coordinates, destination_coordinates, grid_manager, spaceship_dictionary,
-                                active_ship, occupied_coordinates, spaceships_occupied_identifiers)
+        self.state = SmallProblem(starting_coordinates, destination_coordinates, grid_manager, spaceship_dictionary,
+                                  active_ship, occupied_coordinates, spaceships_occupied_identifiers)
         self.initialize = self.state
         Problem.__init__(self, initial=self.state)
 
     def actions(self, state):
+        """Return the actions that can be executed in the given
+        state. The result would typically be a tuple, but if there are
+        many actions, consider yielding them one at a time in an
+        iterator, rather than building them all at once."""
         all_possible_actions = state.get_possible_actions()
         for current_possible_action in all_possible_actions:
             yield current_possible_action
@@ -206,6 +209,9 @@ class BigProblemManager(Problem):
         return state.goal_test()
 
     def h(self, node):
+        """ This is the heuristic. It gets a node (not a state,
+        state can be accessed via node.state)
+        and returns a goal distance estimate"""
         return node.state.current_heuristic()
 
 
@@ -265,8 +271,7 @@ class BigProblem:
 
             if not new_coordinates:
                 if other_new_coordinates and other_spaceship_name:
-                    move_actions_set.add(
-                        ("move", other_spaceship_name, self.current_coordinates, other_new_coordinates))
+                    move_actions_set.add(("move", other_spaceship_name, new_coordinates, other_new_coordinates))
 
         return move_actions_set
 
@@ -297,9 +302,7 @@ class BigProblem:
         dz = abs(self.current_coordinates[2] - self.destination_coordinates[2])
 
         if (dx == 0 and dy == 0) or (dx == 0 and dz == 0) or (dy == 0 and dz == 0):
-            if self.check_for_occlusions():
-                return False
-            return True
+            return self.check_for_occlusions()
         return False
 
     def current_heuristic(self):
@@ -531,6 +534,477 @@ def astar_search(problem, h=None):
 # ----------------------------------------------------------------------------------------------- #
 
 
+class PriorityManager:
+    def __init__(self, overview_obj):
+        self.overview_obj = overview_obj
+        self.device_spaceship_deadend = dict()
+        self.dead_devices = set()
+
+    def initialize_on_line_device(self):
+        if print_all_headlines:
+            print(">>> Function: initialize_on_line_device")
+
+        self.overview_obj.is_turned_on = 0
+        self.overview_obj.is_calibrated = 0
+        self.overview_obj.calibration_current_estimate_index = 0
+        self.overview_obj.use_device_current_estimate_index = 0
+
+    def get_new_active_weapon(self):
+        if print_all_headlines:
+            print(">>> Function: get_new_active_weapon")
+
+        for current_device in self.overview_obj.devices:
+            if self.overview_obj.total_number_of_hits_per_device[current_device] != 0:
+                self.overview_obj.online_device_id = self.overview_obj.devices.index(current_device)
+                self.initialize_on_line_device()
+                break
+
+    def kill_device(self, current_device):
+        if print_all_headlines:
+            print(">>> Function: kill_device. Device to kill: " + str(current_device))
+        self.overview_obj.dictionary_device_spaceships_priorities[current_device] = None
+        self.overview_obj.dictionary_device_targets_priorities[current_device] = None
+        self.dead_devices.add(current_device)
+
+    def check_for_occlusions_calib(self, current_spaceship_coordinates, current_calibration_coordinates,
+                                   distances_directions):
+        if print_all_headlines:
+            print(">>> Function: check_for_occlusions_calib")
+
+        distances, directions = distances_directions
+
+        found_occlusion = False
+        occlusions_distances_set = set()
+
+        for temp_target in self.overview_obj.targets_dict:
+            temp_distance, temp_direction, is_target_straight = UtilsActions.check_straight_line(
+                current_spaceship_coordinates, temp_target)
+            if is_target_straight:
+                if temp_direction == directions:
+                    if temp_distance < distances:
+                        found_occlusion = True
+                        occlusions_distances_set.add(temp_distance)
+
+        for temp_calib in self.overview_obj.calibration_targets_dict.values():
+            if temp_calib != current_calibration_coordinates:
+                temp_distance, temp_direction, is_target_straight = UtilsActions.check_straight_line(
+                    current_spaceship_coordinates, temp_calib)
+                if is_target_straight:
+                    if temp_direction == directions:
+                        if temp_distance < distances:
+                            found_occlusion = True
+                            occlusions_distances_set.add(temp_distance)
+
+        return found_occlusion, occlusions_distances_set
+
+    def check_for_occlusions_target(self, current_spaceship_coordinates, current_target_coordinates,
+                                    distances_directions):
+        if print_all_headlines:
+            print(">>> Function: check_for_occlusions_target")
+
+        distances, directions = distances_directions
+
+        found_occlusion = False
+        occlusions_distances_set = set()
+
+        for temp_target in self.overview_obj.targets_dict:
+            if temp_target != current_target_coordinates:
+                temp_distance, temp_direction, is_target_straight = UtilsActions.check_straight_line(
+                    current_spaceship_coordinates, temp_target)
+                if is_target_straight:
+                    if temp_direction == directions:
+                        if temp_distance < distances:
+                            found_occlusion = True
+                            occlusions_distances_set.add(temp_distance)
+
+        for temp_calib in self.overview_obj.calibration_targets_dict.values():
+            temp_distance, temp_direction, is_target_straight = UtilsActions.check_straight_line(
+                current_spaceship_coordinates, temp_calib)
+            if is_target_straight:
+                if temp_direction == directions:
+                    if temp_distance < distances:
+                        found_occlusion = True
+                        occlusions_distances_set.add(temp_distance)
+
+        return found_occlusion, occlusions_distances_set
+
+    def add_priority_to_sorted_list_calib(self, current_spaceship, current_device, priority_value,
+                                          distances_directions):
+        for i_index in range(len(self.overview_obj.dictionary_device_spaceships_priorities[current_device])):
+            if priority_value < \
+                    self.overview_obj.dictionary_device_spaceships_priorities[current_device][i_index][1]:
+                self.overview_obj.dictionary_device_spaceships_priorities[current_device].insert(i_index,
+                                                                                                 [current_spaceship,
+                                                                                                  priority_value,
+                                                                                                  distances_directions])
+                break
+        else:
+            self.overview_obj.dictionary_device_spaceships_priorities[current_device].append(
+                [current_spaceship, priority_value, distances_directions])
+
+    def add_priority_to_sorted_list_target(self, current_target_coordinates, current_device, priority_value,
+                                           distances_directions):
+        for i_index in range(len(self.overview_obj.dictionary_device_targets_priorities[current_device])):
+            if priority_value < \
+                    self.overview_obj.dictionary_device_targets_priorities[current_device][i_index][1]:
+                self.overview_obj.dictionary_device_targets_priorities[current_device].insert(i_index,
+                                                                                              [
+                                                                                                  current_target_coordinates,
+                                                                                                  priority_value,
+                                                                                                  distances_directions])
+                break
+        else:
+            self.overview_obj.dictionary_device_targets_priorities[current_device].append(
+                [current_target_coordinates, priority_value, distances_directions])
+
+    def get_straight_priority_order(self, target_distance, occlusions_distances_set):
+        number_of_occlusions = len(occlusions_distances_set)
+        min_distance = min(occlusions_distances_set)
+        max_distance = max(occlusions_distances_set)
+
+        if number_of_occlusions == 1:
+            if max_distance == target_distance - 1:
+                return min_distance + 3
+            else:
+                return min_distance + 4
+        else:
+            return min_distance - 1 + number_of_occlusions * 3
+
+    def add_device_ship_deadend(self, device_name, ship_name):
+        if device_name in self.device_spaceship_deadend:
+            if ship_name not in self.device_spaceship_deadend[device_name]:
+                self.device_spaceship_deadend[device_name].append(ship_name)
+        else:
+            self.device_spaceship_deadend[device_name] = [ship_name]
+
+
+class CalibPriorityManager(PriorityManager):
+    def __init__(self, overview_obj):
+        super().__init__(overview_obj)
+
+    def pass_device_checks(self, current_device):
+        # current_device - Current Device Name (string)
+        if self.overview_obj.total_number_of_hits_per_device[current_device] != 0:
+            return True
+
+        else:
+            self.kill_device(current_device)
+            return False
+
+    def pass_spaceship_checks(self, current_device, current_spaceship):
+        if current_spaceship.check_device_exists(current_device):
+            if current_device in self.device_spaceship_deadend:
+                if current_spaceship.name in self.device_spaceship_deadend[current_device]:
+                    return False
+            return True
+        return False
+
+    def get_current_calib_priority(self, current_spaceship, device_calibration_coordinates, all_distances_dict):
+        if print_all_headlines:
+            print(">>> Function: get_current_calib_priority")
+
+        current_spaceship_coordinates = current_spaceship.coordinates
+        distances, directions, is_straight_line = all_distances_dict[
+            (current_spaceship_coordinates, device_calibration_coordinates)]
+
+        if is_straight_line:
+            found_occlusion, occlusions_distances_set = self.check_for_occlusions_calib(
+                current_spaceship_coordinates, device_calibration_coordinates, (distances, directions))
+
+            if not found_occlusion:
+                priority_value = 0
+            else:
+                priority_value = self.get_straight_priority_order(distances, occlusions_distances_set)
+
+            return [current_spaceship, priority_value, (distances, directions)]
+
+        else:
+            priority_value = sum(distances) - max(distances)
+            distances_directions = sorted(zip(distances, directions), key=lambda dist: dist[0])
+            return [current_spaceship, priority_value, distances_directions]
+
+    def priority_calib_main(self):
+        if print_all_headlines or print_main_headlines:
+            print(">>> Function: priority_calib_main")
+
+        def get_current_device_data(current_device):
+            if self.pass_device_checks(current_device):
+                temporary_priorities = []
+                device_calibration_coordinates = self.overview_obj.calibration_targets_dict[current_device]
+
+                for current_spaceship in self.overview_obj.spaceships.values():
+                    if self.pass_spaceship_checks(current_device, current_spaceship):
+                        current_priority = self.get_current_calib_priority(current_spaceship,
+                                                                           device_calibration_coordinates,
+                                                                           all_distances_dict)
+
+                        temporary_priorities.append(current_priority)
+
+                        # if current_priority[1] == 0:
+                        #     temporary_priorities.insert(0, current_priority)
+                        #     self.overview_obj.dictionary_device_spaceships_priorities[
+                        #         current_device] = temporary_priorities
+                        #     return True
+                        #
+                        # else:
+                        #     temporary_priorities.append(current_priority)
+
+                if len(temporary_priorities) > 0:
+                    temporary_priorities.sort(key=lambda priority: priority[1])
+                    self.overview_obj.dictionary_device_spaceships_priorities[current_device] = temporary_priorities
+                    return True
+
+            return False
+
+        all_distances_dict = UtilsGeneral.get_all_distances_dict(self.overview_obj.spaceships,
+                                                                 self.overview_obj.targets_dict,
+                                                                 self.overview_obj.calibration_targets_dict)
+
+        for current_device in self.overview_obj.devices:
+            if current_device not in self.dead_devices:
+                if get_current_device_data(current_device):
+                    break
+
+        self.get_new_active_weapon()
+
+    def priority_calib_update(self):
+        if print_all_headlines or print_main_headlines:
+            print(">>> Function: priority_calib_update")
+
+        current_device = self.overview_obj.devices[self.overview_obj.online_device_id]
+        current_estimate = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
+            self.overview_obj.calibration_current_estimate_index]
+        current_estimate_spaceship = current_estimate[0]
+        current_spaceship_coordinates = current_estimate_spaceship.coordinates
+        device_calibration_coordinates = self.overview_obj.calibration_targets_dict[current_device]
+
+        distances, directions, is_straight_line = UtilsActions.check_straight_line(
+            current_spaceship_coordinates, device_calibration_coordinates)
+
+        if is_straight_line:
+            found_occlusion, occlusions_distances_set = self.check_for_occlusions_calib(
+                current_spaceship_coordinates, device_calibration_coordinates, (distances, directions))
+
+            if not found_occlusion:
+                priority_value = 0
+
+            else:
+                priority_value = self.get_straight_priority_order(distances, occlusions_distances_set)
+
+            self.overview_obj.dictionary_device_spaceships_priorities[current_device][
+                self.overview_obj.calibration_current_estimate_index] = [
+                current_estimate_spaceship, priority_value, (distances, directions)]
+
+        else:
+            priority_value = sum(distances) - max(distances)
+            distances_directions = sorted(zip(distances, directions), key=lambda dist: dist[0])
+
+            self.overview_obj.dictionary_device_spaceships_priorities[current_device][
+                self.overview_obj.calibration_current_estimate_index] = [
+                current_estimate_spaceship, priority_value, distances_directions]
+
+    def get_calib_estimate_action(self, current_estimate, current_device, as_single=False):
+        current_estimate_spaceship = current_estimate[0]
+        current_estimate_spaceship_name = current_estimate_spaceship.name
+
+        if current_estimate[1] == 0:
+            if current_estimate_spaceship.check_ready_calibrate(current_device):
+                if as_single:
+                    return ('calibrate', current_estimate_spaceship_name, current_device,
+                            self.overview_obj.calibration_targets_dict[current_device])
+                else:
+                    return (('calibrate', current_estimate_spaceship_name, current_device,
+                             self.overview_obj.calibration_targets_dict[current_device]),)
+            else:
+                if as_single:
+                    return ('turn_on', current_estimate_spaceship_name, current_device)
+                else:
+                    return (('turn_on', current_estimate_spaceship_name, current_device),)
+        else:
+            return UtilsActions.get_move_action_priority_calibration(current_estimate, self.overview_obj.state,
+                                                                     self.overview_obj.grid_size)
+
+    def get_calibration_actions(self, grid_manager):
+        if print_all_headlines or print_main_headlines:
+            print(">>> Function: get_calibration_actions")
+
+        single_action = False
+
+        current_device = self.overview_obj.devices[self.overview_obj.online_device_id]
+
+        current_estimate = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
+            self.overview_obj.calibration_current_estimate_index]
+
+        if current_estimate[1] == 0:
+            single_action = True
+            yield self.get_calib_estimate_action(current_estimate, current_device, as_single=True)
+
+        # if not single_action:
+        #     for current_estimate_index in range(
+        #             len(self.overview_obj.dictionary_device_spaceships_priorities[current_device])):
+        #
+        #         current_estimate = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
+        #             current_estimate_index]
+        #         current_estimate_actions_set = self.get_calib_estimate_action(current_estimate, current_device)
+        #
+        #         self.overview_obj.calibration_current_estimate_index = current_estimate_index
+        #         for current_action in current_estimate_actions_set:
+        #             yield current_action
+        #
+        #         self.add_device_ship_deadend(current_device, current_estimate[0].name)
+
+
+class TargetPriorityManager(PriorityManager):
+    def __init__(self, overview_obj):
+        super().__init__(overview_obj)
+        self.devices_introduced = set()
+
+    def reset_introduced_device(self, current_device):
+        if current_device in self.devices_introduced:
+            self.devices_introduced.remove(current_device)
+
+    def priority_target_update(self):
+        if print_all_headlines or print_main_headlines:
+            print(">>> Function: priority_target_update")
+
+        current_device = self.overview_obj.devices[self.overview_obj.online_device_id]
+        current_estimate_spaceship = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
+            self.overview_obj.calibration_current_estimate_index][0]
+        current_spaceship_coordinates = current_estimate_spaceship.coordinates
+        current_target_coordinates = self.overview_obj.dictionary_device_targets_priorities[current_device][
+            self.overview_obj.use_device_current_estimate_index][0]
+
+        distances, directions, is_straight_line = UtilsActions.check_straight_line(
+            current_spaceship_coordinates, current_target_coordinates)
+
+        if is_straight_line:
+            found_occlusion, occlusions_distances_set = self.check_for_occlusions_calib(
+                current_spaceship_coordinates, current_target_coordinates, (distances, directions))
+
+            if not found_occlusion:
+                priority_value = 0
+            else:
+                priority_value = self.get_straight_priority_order(distances, occlusions_distances_set)
+
+            self.overview_obj.dictionary_device_targets_priorities[current_device][
+                self.overview_obj.use_device_current_estimate_index] = [
+                current_target_coordinates, priority_value, (distances, directions)]
+
+        else:
+            priority_value = sum(distances) - max(distances)
+            distances_directions = sorted(zip(distances, directions), key=lambda dist: dist[0])
+
+            self.overview_obj.dictionary_device_targets_priorities[current_device][
+                self.overview_obj.use_device_current_estimate_index] = [
+                current_target_coordinates, priority_value,
+                distances_directions]
+
+    def priority_target_main(self):
+        if print_all_headlines or print_main_headlines:
+            print(">>> Function: priority_target_main")
+
+        current_device = self.overview_obj.devices[self.overview_obj.online_device_id]
+        current_estimate = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
+            self.overview_obj.calibration_current_estimate_index]
+        current_estimate_spaceship = current_estimate[0]
+        current_spaceship_coordinates = current_estimate_spaceship.coordinates
+
+        all_distances_dict = UtilsGeneral.get_all_distances_dict(self.overview_obj.spaceships,
+                                                                 self.overview_obj.targets_dict,
+                                                                 self.overview_obj.calibration_targets_dict,
+                                                                 specific_spaceship=current_estimate_spaceship)
+
+        found_zero_priority = False
+        temporary_priorities = []
+        for current_target in self.overview_obj.targets_dict:
+            if current_device in self.overview_obj.targets_dict[current_target]:
+                current_priority = self.get_current_target_priority(current_spaceship_coordinates, current_target,
+                                                                    all_distances_dict)
+                if current_priority[1] == 0:
+                    temporary_priorities.insert(0, current_priority)
+                    self.overview_obj.dictionary_device_targets_priorities[current_device] = temporary_priorities
+                    self.reset_introduced_device(current_device)
+                    found_zero_priority = True
+                    break
+                else:
+                    temporary_priorities.append(current_priority)
+
+        if not found_zero_priority:
+            temporary_priorities.sort(key=lambda priority: priority[1])
+            self.overview_obj.dictionary_device_targets_priorities[current_device] = temporary_priorities
+            self.reset_introduced_device(current_device)
+
+    def get_current_target_priority(self, current_spaceship_coordinates, current_target_coordinates,
+                                    all_distances_dict):
+        if print_all_headlines:
+            print(">>> Function: get_current_target_priority")
+
+        distances, directions, is_straight_line = all_distances_dict[
+            (current_spaceship_coordinates, current_target_coordinates)]
+
+        if is_straight_line:
+            found_occlusion, occlusions_distances_set = self.check_for_occlusions_target(
+                current_spaceship_coordinates, current_target_coordinates, (distances, directions))
+
+            if not found_occlusion:
+                priority_value = 0
+            else:
+                priority_value = self.get_straight_priority_order(distances, occlusions_distances_set)
+
+            return [current_target_coordinates, priority_value, (distances, directions)]
+
+        else:
+            priority_value = sum(distances) - max(distances)
+            distances_directions = sorted(zip(distances, directions), key=lambda dist: dist[0])
+            return [current_target_coordinates, priority_value, distances_directions]
+
+    def get_target_actions(self):
+        if print_all_headlines or print_main_headlines:
+            print(">>> Function: get_target_actions")
+
+        current_device = self.overview_obj.devices[self.overview_obj.online_device_id]
+        current_device_calib_estimate = self.overview_obj.dictionary_device_spaceships_priorities[current_device][
+            self.overview_obj.calibration_current_estimate_index]
+        current_estimate_spaceship = current_device_calib_estimate[0]
+        current_estimate_spaceship_name = current_estimate_spaceship.name
+
+        current_use_estimate = self.overview_obj.dictionary_device_targets_priorities[current_device][
+            self.overview_obj.use_device_current_estimate_index]
+
+        current_use_estimate_target_coordinates = current_use_estimate[0]
+
+        single_action = False
+
+        if current_use_estimate[1] == 0:
+            single_action = True
+            yield ('use', current_estimate_spaceship_name, current_device, current_use_estimate_target_coordinates)
+
+        # -------------------------------
+        if not single_action:
+            for current_estimate_index in range(
+                    len(self.overview_obj.dictionary_device_targets_priorities[current_device])):
+
+                current_estimate = self.overview_obj.dictionary_device_targets_priorities[current_device][
+                    current_estimate_index]
+
+                current_estimate_actions_set = UtilsActions.get_move_action_priority_targets(current_estimate,
+                                                                                             current_estimate_spaceship,
+                                                                                             self.overview_obj.state,
+                                                                                             self.overview_obj.grid_size)
+
+                self.overview_obj.use_device_current_estimate_index = current_estimate_index
+                for current_action in current_estimate_actions_set:
+                    yield current_action
+
+            # # Make sure 'use_device_current_estimate_index' is initialized to zero somewhere in Calib priority
+            # self.overview_obj.calib_priority_manager.add_device_ship_deadend(current_device,
+            #                                                                  current_estimate_spaceship_name)
+            # self.overview_obj.calib_priority_manager.priority_calib_main()
+            # calibration_actions = self.overview_obj.calib_priority_manager.get_calibration_actions()
+            # for current_action in calibration_actions:
+            #     yield current_action
+
+
 class UtilsGeneral:
     @staticmethod
     def get_all_distances_dict(spaceships, targets_dict, calibration_targets_dict, specific_spaceship=None):
@@ -604,23 +1078,6 @@ class UtilsGeneral:
                 directions_to_return.append('-dz')
 
         return distances_to_return, directions_to_return
-
-    @staticmethod
-    def check_straight_line(tuple_coordinate1, tuple_coordinate2):
-        dx = tuple_coordinate2[0] - tuple_coordinate1[0]
-        dy = tuple_coordinate2[1] - tuple_coordinate1[1]
-        dz = tuple_coordinate2[2] - tuple_coordinate1[2]
-
-        if dx == 0 and dy == 0:
-            return (dz, 'dz', 1) if dz > 0 else (-dz, '-dz', 1)
-
-        if dx == 0 and dz == 0:
-            return (dy, 'dy', 1) if dy > 0 else (-dy, '-dy', 1)
-
-        if dy == 0 and dz == 0:
-            return (dx, 'dx', 1) if dx > 0 else (-dx, '-dx', 1)
-
-        return -1, -1, 0
 
 
 class UtilsUpdate:
@@ -709,6 +1166,42 @@ class UtilsActions:
         return temp_move_actions_set
 
     @staticmethod
+    def get_move_action_priority_calibration(current_estimate, state, grid_size):
+        if print_all_headlines:
+            print(">>> Function: get_move_action_priority_calibration")
+
+        current_ship_name = current_estimate[0].name
+        current_ship_coordinates = current_estimate[0].coordinates
+        distances_directions = current_estimate[2]
+
+        if isinstance(distances_directions[0], int):
+            distances_directions = (distances_directions,)
+
+        move_actions_set = UtilsActions.good_cop_bad_cop(current_ship_name, current_ship_coordinates, state, grid_size,
+                                                         distances_directions)
+
+        return move_actions_set
+
+    @staticmethod
+    def get_move_action_priority_targets(current_estimate, current_spaceship, state, grid_size):
+        if print_all_headlines:
+            print(">>> Function: get_move_action_priority_targets")
+
+        move_actions_set = set()
+        current_ship_name = current_spaceship.name
+        current_ship_coordinates = current_spaceship.coordinates
+        distances_directions = current_estimate[2]
+
+        if isinstance(distances_directions[0], int):
+            distances_directions = (distances_directions,)
+
+        move_actions_set.update(
+            UtilsActions.good_cop_bad_cop(current_ship_name, current_ship_coordinates, state, grid_size,
+                                          distances_directions))
+
+        return move_actions_set
+
+    @staticmethod
     def coordinates_legalization(current_coordinates, state, grid_size, not_in_direction=None, priority=True):
         if print_all_headlines:
             print(">>> Function: coordinates_legalization")
@@ -745,21 +1238,6 @@ class UtilsActions:
             print(">>> Function: check_empty_cell")
         if current_coordinates not in state.occupied_coordinates:
             return True
-
-    @staticmethod
-    def move_me_anywhere_single_ship(current_coordinates, state, grid_size):
-        if print_all_headlines:
-            print(">>> Function: move_me_anywhere")
-
-        movements_set = set()
-        possible_directions = ['dx', 'dy', 'dz', '-dx', '-dy', '-dz']
-        for dirc in possible_directions:
-            new_coordinates = UtilsActions.new_coordinates_by_direction(current_coordinates, dirc)
-            if UtilsActions.check_within_grid_range(new_coordinates, grid_size) and UtilsActions.check_empty_cell(
-                    new_coordinates, state):
-                movements_set.add(new_coordinates)
-
-        return movements_set
 
     @staticmethod
     def move_me_anywhere(current_coordinates, state, grid_size, not_in_direction=None, main_ship=False):
@@ -1138,7 +1616,11 @@ class GridManager:
             return self.safe_but_unexplored[min_index]
         return None
 
-    def get_best_move_from_set(self, actions_set):
+    def get_best_random_move(self, actions_set, go_wild=False):
+
+        if go_wild:
+            return random.choice(actions_set)
+
         def get_rating(current_coordinates):
             x, y, z = current_coordinates
             voting = 0
@@ -1165,10 +1647,6 @@ class GridManager:
 
         for current_action in actions_set:
             current_coordinates = current_action[3]
-            current_cell = self.grid_obj.get_cell(current_coordinates)
-            if current_cell.explored:
-                continue
-
             current_vote = get_rating(current_coordinates)
             if max_value == current_vote:
                 max_action.append(current_action)
@@ -1176,13 +1654,13 @@ class GridManager:
                 max_value = current_vote
                 max_action = [current_action]
 
+        # print("Max Actions: ", max_action)
+        # print("All Actions: ", actions_set)
         if len(max_action) == 1:
             return max_action[0]
-        elif len(max_action) > 1:
-            random_action = random.choice(max_action)
-            return random_action
         else:
-            random_action = random.choice(actions_set)
+            random_action = random.choice(max_action)
+            # print(random_action)
             return random_action
 
     # --------------------------------- #
@@ -1544,8 +2022,7 @@ class GridManager:
 class AllProblems:
     @staticmethod
     def run_small_problem(overview_obj, cell_to_explore, grid_manager):
-        if print_main_headlines:
-            print(">>> Function: run_small_problem")
+
         min_steps = 999
         min_result = None
 
@@ -1568,13 +2045,11 @@ class AllProblems:
             overview_obj.exploration_mode = 1
             overview_obj.exploration_plan = min_result
             return True
-
         return False
 
     @staticmethod
     def run_big_problem_calibration(overview_obj, grid_manager):
-        if print_main_headlines:
-            print(">>> Function: run_big_problem_calibration")
+
         min_steps = 999
         min_result = None
 
@@ -1593,13 +2068,6 @@ class AllProblems:
                 if isinstance(result, Node):
                     solution = list(map(lambda n: n.action, result.path()))[1:]
 
-                    if solution == []:
-                        solution.append(('turn_on', current_spaceship_name, current_device))
-                        solution.append(('calibrate', current_spaceship_name, current_device, current_calibration))
-                        overview_obj.exploration_mode = 1
-                        overview_obj.exploration_plan = solution
-                        return True
-
                     if len(solution) < min_steps:
                         min_steps = len(solution)
                         min_result = solution
@@ -1608,13 +2076,11 @@ class AllProblems:
             overview_obj.exploration_mode = 1
             overview_obj.exploration_plan = min_result
             return True
-
         return False
 
     @staticmethod
     def run_big_problem_targets(overview_obj, grid_manager):
-        if print_main_headlines:
-            print(">>> Function: run_big_problem_targets")
+
         min_steps = 999
         min_result = None
 
@@ -1633,12 +2099,6 @@ class AllProblems:
             if isinstance(result, Node):
                 solution = list(map(lambda n: n.action, result.path()))[1:]
 
-                if solution == []:
-                    solution.append(('use', active_ship_name, current_device, current_target))
-                    overview_obj.exploration_mode = 1
-                    overview_obj.exploration_plan = solution
-                    return True, None
-
                 if len(solution) < min_steps:
                     min_steps = len(solution)
                     min_result = solution
@@ -1646,14 +2106,12 @@ class AllProblems:
         if min_result:
             overview_obj.exploration_mode = 1
             overview_obj.exploration_plan = min_result
-            return True, None
-
-        closest_target = AllProblems.get_targets_by_distance(current_device, active_ship_coordinates,
-                                                             overview_obj.targets_dict)[0]
-        return False, closest_target
+            return True
+        return False
 
     @staticmethod
     def get_targets_by_distance(current_device, current_spaceship_coordinates, targets_dict):
+
         def temp_heuristic():
             dx = abs(current_spaceship_coordinates[0] - current_target[0])
             dy = abs(current_spaceship_coordinates[1] - current_target[1])
@@ -1670,84 +2128,6 @@ class AllProblems:
 
         return [t for (t, h) in sorted(zip(targets, heuristics), key=lambda pair: pair[1])]
 
-    @staticmethod
-    def all_possible_calibration_moves(overview_obj, state, grid_size):
-        '''
-        We get here if there is no path to get straight line with current device target.
-        AND there is no safe cells to explore
-
-        '''
-        if print_all_headlines:
-            print(">>> all_possible_calibration_moves")
-        current_device = overview_obj.devices[overview_obj.online_device_id]
-        current_calibration = overview_obj.calibration_targets_dict[current_device]
-
-        all_moves_set = set()
-
-        for current_spaceship_name in overview_obj.spaceships:
-            current_spaceship = overview_obj.spaceships[current_spaceship_name]
-            if current_spaceship.check_device_exists(current_device):
-                all_moves_set.update(
-                    AllProblems.all_possible_moves(current_spaceship, state, grid_size, current_calibration))
-
-        # If there are no possible moves in target direction - do random move
-        if not all_moves_set:
-            for current_spaceship_name in overview_obj.spaceships:
-                current_spaceship = overview_obj.spaceships[current_spaceship_name]
-                current_ship_coordinates = current_spaceship.coordinates
-                possible_movements = UtilsActions.move_me_anywhere_single_ship(current_ship_coordinates, state,
-                                                                               grid_size)
-                if possible_movements:
-                    for current_new_coordinates in possible_movements:
-                        all_moves_set.add(
-                            ("move", current_spaceship_name, current_ship_coordinates, current_new_coordinates))
-
-        return all_moves_set
-
-    @staticmethod
-    def all_possible_moves(spaceship_obj, state, grid_size, cell_to_explore, calibrated_ship=None):
-        if print_all_headlines:
-            print(">>> all_possible_moves")
-
-        current_name = spaceship_obj.name
-        current_coordinates = spaceship_obj.coordinates
-        distances, directions = UtilsGeneral.get_from_to_dist_dirc(current_coordinates,
-                                                                   cell_to_explore)
-        distances_directions = sorted(zip(distances, directions), key=lambda dist: dist[0])
-
-        if current_coordinates == (1, 2, 1) and cell_to_explore == (1, 2, 3):
-            prinsada = 10
-
-        temp_move_actions_set = set()
-        for dist, dirc in distances_directions:
-            new_coordinates = UtilsActions.new_coordinates_by_direction(current_coordinates, dirc)
-
-            new_coordinates_easy_check, _ = UtilsActions.coordinates_legalization(new_coordinates, state, grid_size,
-                                                                                  priority=False)
-
-            other_new_coordinates = None
-            other_spaceship_name = None
-            if not new_coordinates_easy_check:
-                other_new_coordinates, other_spaceship_name = UtilsActions.coordinates_legalization(new_coordinates,
-                                                                                                    state,
-                                                                                                    grid_size,
-                                                                                                    not_in_direction=[
-                                                                                                        dirc],
-                                                                                                    priority=True)
-
-            if new_coordinates_easy_check:
-                temp_move_actions_set.add(("move", current_name, current_coordinates, new_coordinates_easy_check))
-                # yield (("move", current_name, current_coordinates, new_coordinates_easy_check), )
-            if other_new_coordinates and other_spaceship_name:
-                temp_move_actions_set.add(("move", other_spaceship_name, new_coordinates, other_new_coordinates))
-                # yield (("move", other_spaceship_name, new_coordinates, other_new_coordinates), )
-
-        if not temp_move_actions_set:
-            if calibrated_ship:
-                temp_move_actions_set = UtilsActions.move_me_anywhere_single_ship(current_coordinates, state, grid_size)
-
-        return temp_move_actions_set
-
 
 class Overview:
     def __init__(self, grid_size):
@@ -1763,11 +2143,9 @@ class Overview:
         self.online_device_id = 0
         self.is_turned_on = 0
         self.is_calibrated = 0
-        self.calibrated_ship = None
+        self.calibrated_ship = ""
 
-        self.introduce_all_spaceships_observations = True
-        self.last_move_ship = None
-
+        self.last_moved_ship_name = ""
         self.number_of_transmitters = 0
         self.exploration_mode = 0
         self.exploration_plan = None
@@ -1815,35 +2193,37 @@ class Overview:
 
         exploded_ships = set()
 
-        if self.introduce_all_spaceships_observations:
-            self.introduce_all_spaceships_observations = False
-            for current_spaceship_name in self.spaceships:
-                current_spaceship_obj = self.spaceships[current_spaceship_name]
-
-                if current_spaceship_name not in observation:
-                    grid_manager.add_explored_coordinates_data(current_spaceship_obj, 0)
+        if not self.last_moved_ship_name:
+            for current_spaceship in self.spaceships:
+                current_spaceship_coordinates = self.spaceships[current_spaceship].coordinates
+                if current_spaceship not in observation:
+                    grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship, 0)
                 else:
-                    if observation[current_spaceship_name] == -1:
-                        exploded_ships.add(current_spaceship_name)
-                    grid_manager.add_explored_coordinates_data(current_spaceship_obj,
-                                                               observation[current_spaceship_name])
+                    if observation[current_spaceship] == -1:
+                        exploded_ships.add(current_spaceship)
+                    grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, current_spaceship,
+                                                               observation[current_spaceship], self.spaceships)
 
-        if self.last_move_ship:
-            current_spaceship_obj = self.spaceships[self.last_move_ship]
-            if self.last_move_ship not in observation:
-                grid_manager.add_explored_coordinates_data(current_spaceship_obj, 0)
+        else:
+            current_spaceship_coordinates = self.spaceships[self.last_moved_ship_name].coordinates
+            if self.last_moved_ship_name not in observation:
+                grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, self.last_moved_ship_name, 0)
             else:
-                if observation[self.last_move_ship] == -1:
-                    exploded_ships.add(self.last_move_ship)
-                grid_manager.add_explored_coordinates_data(current_spaceship_obj, observation[self.last_move_ship])
+                if observation[self.last_moved_ship_name] == -1:
+                    exploded_ships.add(self.last_moved_ship_name)
+                grid_manager.add_explored_coordinates_data(current_spaceship_coordinates, self.last_moved_ship_name,
+                                                           observation[self.last_moved_ship_name], self.spaceships)
 
         if exploded_ships:
             for ship_to_explode in exploded_ships:
                 del self.spaceships[ship_to_explode]
 
     def get_possible_actions(self, grid_manager, observation):
-        if print_main_headlines:
+        if print_all_headlines or print_main_headlines:
             print(">>> Function: get_possible_actions")
+
+        current_device = self.devices[self.online_device_id]
+
         self.update_current_observation(grid_manager, observation)
 
         if not self.spaceships:
@@ -1863,8 +2243,6 @@ class Overview:
                     return current_move_action
 
         if not self.is_calibrated:
-            if print_main_headlines:
-                print(">>>>> Looking to calibrate....")
 
             solved_big = AllProblems.run_big_problem_calibration(self, grid_manager)
             if solved_big:
@@ -1873,7 +2251,6 @@ class Overview:
                     del self.exploration_plan[0]
                     return current_move_action
 
-            current_device_calibration_coordinates = self.calibration_targets_dict[self.devices[self.online_device_id]]
             cell_to_explore = grid_manager.get_closest_explore_to_cell(current_device_calibration_coordinates)
             if cell_to_explore:
                 solved_small = AllProblems.run_small_problem(self, cell_to_explore, grid_manager)
@@ -1882,22 +2259,20 @@ class Overview:
                     del self.exploration_plan[0]
                     return current_move_action
 
-            all_possible_moves = AllProblems.all_possible_calibration_moves(self, self.state, self.grid_size)
-            best_bet = grid_manager.get_best_move_from_set(all_possible_moves)
-            return best_bet
+            # else:
+            #     best_bet = grid_manager.get_best_random_move(all_possible_actions)
+            #     return best_bet
 
         else:
-            if print_main_headlines:
-                print(">>>>> Looking to activate....")
 
-            solved_big, closest_target = AllProblems.run_big_problem_targets(self, grid_manager)
+            solved_big = AllProblems.run_big_problem_targets(self, grid_manager)
             if solved_big:
                 if self.exploration_plan:
                     current_move_action = self.exploration_plan[0]
                     del self.exploration_plan[0]
                     return current_move_action
 
-            cell_to_explore = grid_manager.get_closest_explore_to_cell(closest_target)
+            cell_to_explore = grid_manager.get_closest_explore_to_cell(self.spaceships[self.calibrated_ship].coordinates)
             if cell_to_explore:
                 solved_small = AllProblems.run_small_problem(self, cell_to_explore, grid_manager)
                 if solved_small:
@@ -1905,11 +2280,9 @@ class Overview:
                     del self.exploration_plan[0]
                     return current_move_action
 
-            all_possible_moves = AllProblems.all_possible_moves(self.spaceships[self.calibrated_ship], self.state,
-                                                                self.grid_size, closest_target, calibrated_ship=True)
-
-            best_bet = grid_manager.get_best_move_from_set(all_possible_moves)
-            return best_bet
+            # else:
+            #     best_bet = grid_manager.get_best_random_move(all_possible_actions)
+            #     return best_bet
 
     def update_action(self, action):
         if print_all_headlines or print_main_headlines:
@@ -1917,11 +2290,7 @@ class Overview:
 
         UtilsUpdate.distribute_packet(action, self.spaceships, self.targets_dict, self.state)
 
-        self.last_move_ship = None
-
-        if action[0] == 'move':
-            self.last_move_ship = action[1]
-        elif action[0] == 'turn_on':
+        if action[0] == 'turn_on':
             self.is_turned_on = 1
         elif action[0] == 'calibrate':
             self.is_calibrated = 1
@@ -1931,10 +2300,19 @@ class Overview:
             self.total_number_of_hits_per_device[action_device] -= 1
 
             if self.total_number_of_hits_per_device[action_device] == 0:
-                self.online_device_id += 1
-                self.is_turned_on = 0
-                self.is_calibrated = 0
-                self.calibrated_ship = None
+                pass
+            else:
+                pass
+
+    def __hash__(self):
+        return hash((self.state))
+
+    def __eq__(self, other):
+        is_equal = self.state == other.state
+        return is_equal
+
+    def __lt__(self, node):
+        return self.heuristic_value < node.heuristic_value
 
 
 class SpaceshipController:
@@ -1963,11 +2341,16 @@ class SpaceshipController:
         state.set_calibration_targets_cells(calibration_targets)
         state.set_devices(devices)
         state.set_targets_cells(targets)
+        state.check_active_devices()
 
         return state
 
     def get_next_action(self, observation):
+        # ship observation -1 means ship was destroyed
+        # ship observation other than -1 (it will be int>0) means number of lasers detected around ship
+        # print("Received Observation: ", observation)
         best_action = self.state.get_possible_actions(self.grid_manager, observation)
+        # print("Returned Action: ", best_action)
         return best_action
 
     def result(self, action):

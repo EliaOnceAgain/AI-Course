@@ -1,4 +1,4 @@
-import ex2
+import ex21
 
 
 def get_num_of_transmitters(Lazer_transm_tuple):
@@ -8,7 +8,7 @@ def get_num_of_transmitters(Lazer_transm_tuple):
 
 
 def check_solution(problem, lazer_locations, print_single_results=False):
-    controller = ex2.SpaceshipController(problem, get_num_of_transmitters(lazer_locations))
+    controller = ex21.SpaceshipController(problem, get_num_of_transmitters(lazer_locations))
     grid_size = controller.state.grid_size
 
     def ex2_get_next_action(print_data=False):
@@ -16,21 +16,10 @@ def check_solution(problem, lazer_locations, print_single_results=False):
         if print_data:
             print("Received Observation: ", observation)
         action = controller.get_next_action(observation)
-        #print(action)
         if print_data:
             print("Returned Action: ", action)
-            print()
-        if validate_no_none(action):
-            return action
-        else:
-            raise TypeError
-
-    def validate_no_none(action):
-        if action:
-            if None in action:
-                return False
-            return True
-        return True
+            #print()
+        return action
 
     def get_observation():
         observations_dict = dict()
@@ -126,7 +115,7 @@ def check_solution(problem, lazer_locations, print_single_results=False):
 
     number_of_actions = 0
     while True:
-        next_action = ex2_get_next_action(print_data=False)
+        next_action = ex2_get_next_action(print_data=True)
         if next_action:
             number_of_actions += 1
             controller.result(next_action)

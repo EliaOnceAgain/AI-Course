@@ -62,14 +62,18 @@ def test_checker():
     lazer_locations = (((1, 0), (4, 0)), ((4, 0),), ((3, 1),))  # 8
     problems.append([problem, lazer_locations, get_num_of_transmitters(lazer_locations)])
 
-    number_of_runs = 10
+    number_of_runs = 1
     number_of_test_runs = 1
     result = None
     number_of_success = 0
 
-    for i, p in enumerate(problems):
+    for i, p in enumerate(problems[5:7]):
         problem, lazer_locations, num_of_transmitters = p
         print("Problem ID: ", i)
+        #print('####################################################')
+        #print('Testing Problem:', problem)
+        #print('Lazer Locations:', lazer_locations)
+        #print()
 
         win_ratio_all = 0
         for _ in range(number_of_test_runs):
@@ -82,7 +86,9 @@ def test_checker():
                     number_of_success += 1
 
             if number_of_test_runs == 1:
-                print("Win Ratio: " + str(int((float(number_of_success) / float(number_of_runs)) * 100.0)) + "%")
+                print("Win Ratio: ", float(number_of_success) / float(number_of_runs))
+            #print("Number of Successfull runs: ", number_of_success)
+            #print("Number of Failed runs: ", number_of_runs - number_of_success)
             win_ratio_all += number_of_success / number_of_runs
 
 

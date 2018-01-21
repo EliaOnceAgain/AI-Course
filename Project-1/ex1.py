@@ -8,7 +8,7 @@ print_all_headlines = False
 print_main_headlines = False
 
 
-class MyState():
+class MyState:
     def __init__(self):
         self.targets_hit = set()
         self.devices_status = set()
@@ -53,7 +53,7 @@ class MyState():
                and set(self.devices_status) == set(other.devices_status)
 
 
-class UtilsActions():
+class UtilsActions:
     @staticmethod
     def good_cop_bad_cop(current_name, current_coordinates, state, grid_size, distances_directions):
         if print_all_headlines:
@@ -178,6 +178,8 @@ class UtilsActions():
         if current_coordinates not in state.occupied_coordinates:
             return True
 
+
+
     @staticmethod
     def move_me_anywhere(current_coordinates, state, grid_size, not_in_direction=None, main_ship = False):
         if print_all_headlines:
@@ -273,7 +275,7 @@ class UtilsActions():
         return distances_to_return, directions_to_return, 0
 
 
-class UtilsUpdate():
+class UtilsUpdate:
     @staticmethod
     def distribute_packet(action, spaceships_dictionary, targets_dictionary, state):
         if print_all_headlines:
@@ -328,7 +330,7 @@ class UtilsUpdate():
         state.add_target_hit((current_target, current_device))
 
 
-class Spaceship():
+class Spaceship:
     def __init__(self, coordinates, name, devices):
         self.coordinates = coordinates
         self.name = name
@@ -408,7 +410,7 @@ class Spaceship():
         return (self.coordinates + (self.name,))
 
 
-class UtilsGeneral():
+class UtilsGeneral:
     @staticmethod
     def get_all_distances_dict(spaceships, targets_dict, calibration_targets_dict, specific_spaceship=None):
         all_distances_dict = dict()
@@ -447,7 +449,7 @@ class UtilsGeneral():
         return all_distances_dict
 
 
-class PriorityManager():
+class PriorityManager:
     def __init__(self, overview_obj):
         self.overview_obj = overview_obj
         self.device_spaceship_deadend = dict()
@@ -943,7 +945,7 @@ class TargetPriorityManager(PriorityManager):
                 yield current_action
 
 
-class Overview():
+class Overview:
     def __init__(self, grid_size):
         self.grid_size = grid_size
         self.state = MyState()
