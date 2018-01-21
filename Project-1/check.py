@@ -56,7 +56,7 @@ def solve_problems(problems, goal, comparison_mode = False):
     solved = 0
 
     try:
-        p = ex11.create_spaceship_problem(problems, goal)
+        p = ex1.create_spaceship_problem(problems, goal)
 
     except Exception as e:
         print("Error creating problem: ", e)
@@ -95,17 +95,19 @@ def main():
     # problem_id_to_run = list(range(7))
     # problem_id_to_run = list(range(9, ProblemsCount()))
     # problem_id_to_run = [-1]
-    problem_id_to_run = list(range(ProblemsCount()))
+    problem_id_to_run = [0]
     goal = None
 
-    run_costums = 0
+    run_costums = 1
     if run_costums:
+        print("Costum Problem 0")
+        solve_problems(CostumProblem0(), goal)
         print("Costum Problem 1")
         solve_problems(CostumProblem1(), goal)
         print("Costum Problem 2")
         solve_problems(CostumProblem2(), goal)
 
-    number_of_runs = 1
+    number_of_runs = 0
 
     for _ in range(number_of_runs):
         if problem_id_to_run != None:
@@ -118,6 +120,17 @@ def main():
                 solve_problems(current_problem, goal, comparison_mode=True)
 
         print("------------------")
+
+def CostumProblem0():
+    # Stuck in corner with no movements
+    return (3,
+            ("sA", "sB"),
+            ("d1",),
+            {"sA": ("d1",), "sB": ("d1",)},
+            {"d1": (0, 1, 0), "d2": (1, 1, 0), "d3": (1, 0, 0), "d4": (0, 0, 1)},
+            {},
+            {"sA": (0, 0, 0), "sB": (1, 1, 2)}
+            )
 
 def CostumProblem1():
     # Stuck in corner with no movements
